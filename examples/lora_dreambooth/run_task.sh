@@ -1,5 +1,5 @@
 
-bash setup.sh text2image
+# bash setup.sh text2image
 export MLFLOW_TRACKING_URI="http://127.0.0.1:5001"
 export MODEL_NAME="CompVis/stable-diffusion-v1-4" 
 export INSTANCE_DIR="./dog"
@@ -14,7 +14,7 @@ accelerate launch mlflow_train_dreambooth.py \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
   --train_text_encoder \
-  --with_prior_preservation --prior_loss_weight=1.0 \
+  --prior_loss_weight=1.0 \
   --instance_prompt="a photo of sks dog" \
   --class_prompt="a photo of dog" \
   --resolution=512 \

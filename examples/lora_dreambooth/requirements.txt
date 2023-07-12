@@ -6,6 +6,5 @@ tqdm
 datasets
 diffusers
 Pillow
-torchvision
 huggingface_hub
 safetensors
