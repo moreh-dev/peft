@@ -8,7 +8,8 @@ export OUTPUT_DIR="./save_model"
 # prepare data (instance dir)
 python prep_dog_data.py
 
-accelerate config default
+# accelerate config default
+python -c "from accelerate.utils import write_basic_config; write_basic_config(mixed_precision='fp16')"
 accelerate launch mlflow_train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
