@@ -1,27 +1,28 @@
 import os
-
 import torch
 from accelerate import Accelerator
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, default_data_collator, get_linear_schedule_with_warmup
-
 from peft import LoraConfig, TaskType, get_peft_model
 from peft.utils.other import fsdp_auto_wrap_policy
 import mlflow
 import time
+import argparse
 
 
-def main():
+def main(args):
     accelerator = Accelerator()
-    model_name_or_path = "t5-base"
-    batch_size = 8
+
+    model_name_or_path = args.model_name_or_path
+    batch_size = args.batch_size
+    lr = args.lr
+    num_epochs = args.num_epochs
+
     text_column = "sentence"
     label_column = "label"
     max_length = 64
-    lr = 1e-3
-    num_epochs = 1
     base_path = "temp/data/FinancialPhraseBank-v1.0"
 
     peft_config = LoraConfig(
@@ -53,9 +54,8 @@ def main():
         model_inputs["labels"] = labels
         return model_inputs
 
-    # mlflow initial
     mlflow_uri = os.environ.get("MLFLOW_TRACKING_URI")
-    if (not mlflow_uri):
+    if not mlflow_uri:
         mlflow_uri = "http://127.0.0.1:5001"
         mlflow.set_tracking_uri(mlflow_uri)
 
@@ -102,7 +102,7 @@ def main():
         for epoch in range(num_epochs):
             model.train()
             total_loss = 0
-            start_time = time.time()  # Start time for the epoch
+            start_time = time.time()
             for step, batch in enumerate(tqdm(train_dataloader)):
                 outputs = model(**batch)
                 loss = outputs.loss
@@ -112,15 +112,13 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-            end_time = time.time()  # End time for the epoch
+            end_time = time.time()
 
-            # Calculate metrics
             epoch_runtime = end_time - start_time
             samples_per_second = len(train_dataloader) / epoch_runtime
             steps_per_second = len(train_dataloader) / epoch_runtime
             avg_loss = total_loss / len(train_dataloader)
 
-            # Log metrics for the epoch
             mlflow.log_metric('loss', avg_loss)
             mlflow.log_metric('total_loss', total_loss)
             mlflow.log_metric('train_runtime', epoch_runtime)
@@ -153,11 +151,17 @@ def main():
             accelerator.print(f"{accuracy=}")
             accelerator.print(f"{eval_preds[:10]=}")
             accelerator.print(f"{dataset['validation'][label_column][:10]=}")
-            
+
             accelerator.wait_for_everyone()
         mlflow.end_run()
-        
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Script for conditional generation training")
+    parser.add_argument("--model_name_or_path", type=str, default="t5-base", help="Model name or path")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
+    parser.add_argument("--num_epochs", type=int, default=1, help="Number of epochs")
+
+    args = parser.parse_args()
+    main(args)
