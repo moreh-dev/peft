@@ -2,6 +2,7 @@ import gc
 import os
 import sys
 import threading
+import argparse
 
 import numpy as np
 import psutil
@@ -23,7 +24,7 @@ import mlflow
 import time
 
 mlflow_uri = os.environ.get("MLFLOW_TRACKING_URI")
-if (not mlflow_uri):
+if not mlflow_uri:
     mlflow_uri = "http://127.0.0.1:5001"
     mlflow.set_tracking_uri(mlflow_uri)
 
@@ -112,16 +113,16 @@ class TorchTracemalloc:
         # print(f"delta used/peak {self.used:4d}/{self.peaked:4d}")
 
 
-def main():
+def main(args):
     accelerator = Accelerator()
-    model_name_or_path = "bigscience/bloomz-7b1"
+    model_name_or_path = args.model_name_or_path
     dataset_name = "twitter_complaints"
     peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
     text_column = "Tweet text"
     label_column = "text_label"
-    lr = 3e-3
-    num_epochs = 20
-    batch_size = 8
+    lr = args.lr
+    num_epochs = args.num_epochs
+    batch_size = args.batch_size
     seed = 42
     max_length = 64
     do_test = False
@@ -199,7 +200,6 @@ def main():
     experiment_id = mlflow.create_experiment('casual-language-modeling-{}'.format(model_name_or_path))
     experiment = mlflow.get_experiment(experiment_id)
     mlflow_runner = mlflow.start_run(run_name=model_name_or_path, experiment_id=experiment.experiment_id)
-
 
     with accelerator.main_process_first():
         processed_datasets = dataset.map(
@@ -281,7 +281,6 @@ def main():
                 mlflow.log_metric('train_steps_per_second', steps_per_second)
             
             mlflow.end_run()
-
 
             # Printing the GPU memory usage details such as allocated memory, peak memory, and total memory usage
             accelerator.print("GPU Memory before entering the train : {}".format(b2mb(tracemalloc.begin)))
@@ -386,4 +385,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Script arguments")
+    parser.add_argument("--model_name_or_path", type=str, default="bigscience/bloomz-7b1",
+                        help="Pretrained model name or path")
+    parser.add_argument("--lr", type=float, default=3e-3, help="Learning rate")
+    parser.add_argument("--num_epochs", type=int, default=20, help="Number of epochs")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+
+    args = parser.parse_args()
+    main(args)
