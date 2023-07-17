@@ -1,29 +1,45 @@
 import os
-
 import torch
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, default_data_collator, get_linear_schedule_with_warmup
-
-from peft import AdaLoraConfig, PeftConfig, PeftModel, TaskType, get_peft_model
+from transformers import (
+    AutoModelForSeq2SeqLM,
+    AutoTokenizer,
+    default_data_collator,
+    get_linear_schedule_with_warmup,
+)
+from peft import (
+    AdaLoraConfig,
+    PeftConfig,
+    PeftModel,
+    TaskType,
+    get_peft_model,
+)
 import mlflow
 import time
-
+import argparse
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-device = "cuda"
-model_name_or_path = "facebook/bart-base"
-tokenizer_name_or_path = "facebook/bart-base"
+parser = argparse.ArgumentParser(description="Financial Sentiment Analysis Script")
+parser.add_argument("--model_name", type=str, default="facebook/bart-base", help="Model name or path")
+parser.add_argument("--tokenizer_name", type=str, default="facebook/bart-base", help="Tokenizer name or path")
+parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
+parser.add_argument("--num_epochs", type=int, default=8, help="Number of epochs")
+parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+args = parser.parse_args()
+
+model_name_or_path = args.model_name
+tokenizer_name_or_path = args.tokenizer_name
+lr = args.lr
+num_epochs = args.num_epochs
+batch_size = args.batch_size
 
 checkpoint_name = "financial_sentiment_analysis_lora_v1.pt"
 text_column = "sentence"
 label_column = "text_label"
 max_length = 128
-lr = 1e-3
-num_epochs = 8
-batch_size = 8
 
 
 # creating model
@@ -46,14 +62,13 @@ model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
 
 mlflow_uri = os.environ.get("MLFLOW_TRACKING_URI")
-if (not mlflow_uri):
+if not mlflow_uri:
     mlflow_uri = "http://127.0.0.1:5001"
     mlflow.set_tracking_uri(mlflow_uri)
 # mlflow initial
-experiment_id = mlflow.create_experiment('conditional_generation-{}'.format(model_name_or_path))
+experiment_id = mlflow.create_experiment(f'conditional_generation-{model_name_or_path}')
 experiment = mlflow.get_experiment(experiment_id)
 mlflow_runner = mlflow.start_run(run_name=model_name_or_path, experiment_id=experiment.experiment_id)
-
 
 # loading dataset
 dataset = load_dataset("financial_phrasebank", "sentences_allagree")
@@ -68,10 +83,8 @@ dataset = dataset.map(
     num_proc=1,
 )
 
-
 # data preprocessing
 tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
-
 
 def preprocess_function(examples):
     inputs = examples[text_column]
@@ -82,7 +95,6 @@ def preprocess_function(examples):
     labels[labels == tokenizer.pad_token_id] = -100
     model_inputs["labels"] = labels
     return model_inputs
-
 
 processed_datasets = dataset.map(
     preprocess_function,
@@ -101,7 +113,6 @@ train_dataloader = DataLoader(
 )
 eval_dataloader = DataLoader(eval_dataset, collate_fn=default_data_collator, batch_size=batch_size, pin_memory=True)
 
-
 # optimizer and lr scheduler
 optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 lr_scheduler = get_linear_schedule_with_warmup(
@@ -111,8 +122,8 @@ lr_scheduler = get_linear_schedule_with_warmup(
 )
 model.base_model.peft_config.total_step = len(train_dataloader) * num_epochs
 
-
 # training and evaluation
+device = "cuda" if torch.cuda.is_available() else "cpu"
 model = model.to(device)
 global_step = 0
 
@@ -172,7 +183,6 @@ with mlflow_runner:
         print(f"{epoch=}: {train_ppl=} {train_epoch_loss=} {eval_ppl=} {eval_epoch_loss=}")
     mlflow.end_run()
 
-
 # print accuracy
 correct = 0
 total = 0
@@ -185,22 +195,18 @@ print(f"{accuracy=} % on the evaluation dataset")
 print(f"{eval_preds[:10]=}")
 print(f"{dataset['validation']['text_label'][:10]=}")
 
-
 # saving model
 peft_model_id = f"{model_name_or_path}_{peft_config.peft_type}_{peft_config.task_type}"
 model.save_pretrained(peft_model_id)
 
-
 ckpt = f"{peft_model_id}/adapter_model.bin"
 # get_ipython().system('du -h $ckpt')
-
 
 peft_model_id = f"{model_name_or_path}_{peft_config.peft_type}_{peft_config.task_type}"
 
 config = PeftConfig.from_pretrained(peft_model_id)
 model = AutoModelForSeq2SeqLM.from_pretrained(config.base_model_name_or_path)
 model = PeftModel.from_pretrained(model, peft_model_id)
-
 
 model.eval()
 i = 13
