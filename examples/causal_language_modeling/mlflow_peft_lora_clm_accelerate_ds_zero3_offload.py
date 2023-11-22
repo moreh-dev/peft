@@ -393,6 +393,7 @@ def main(args):
     
     avg_throughput = len(train_dataloader) * args.batch_size*num_epochs / sum(epoch_runtime_list)
     mlflow.log_metric('avg_throughput', avg_throughput)
+    mlflow.log_metric('accuracy', accuracy)
     mlflow.end_run()
     if do_test:
         model.eval()

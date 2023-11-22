@@ -33,9 +33,10 @@ parser.add_argument("--logging_steps", type=int, default=1,
                     help="Log metrics every X steps")
 parser.add_argument('--cache_dir', type=str, default=None, help='Directory to read/write data.')
 parser.add_argument("--amp", type=str, choices=["bf16", "fp16", "no"], default="no", help="Choose AMP mode")
-parser.add_argument('--checkpoint_dir', type=str, default="/nas/kimng/repo_clean/peft/examples/image_classification/swin-base-patch4-window7-224/10epoch.pt", help='Directory to save checkpoints.')
+parser.add_argument('--checkpoint_dir', type=str, default="/nas/peft/examples/image_classification/swin-base-patch4-window7-224/10epoch.pt", help='Directory to save checkpoints.')
 parser.add_argument('--load_checkpoint', type=str, default=False, help='Load checkpoint or not.')
 parser.add_argument('--save_checkpoint', type=str, default=False, help='Save checkpoint or not.')
+parser.add_argument("--optimizer", type=str, default="AdamW", help="Choose the optimization computation method")
 args = parser.parse_args()
 
 
@@ -123,9 +124,10 @@ print_trainable_parameters(lora_model)
 # Define training arguments
 model_name = args.model_checkpoint.split("/")[-1]
 
-# optimizer = Adafactor(model.parameters(), scale_parameter=True, relative_step=True, warmup_init=True, lr=None)
-# lr_scheduler = AdafactorSchedule(optimizer)
-# optimizers = (optimizer, lr_scheduler)
+if args.optimizer == "Adafactor":
+    optimizer = Adafactor(model.parameters(), scale_parameter=True, relative_step=True, warmup_init=True, lr=None)
+    lr_scheduler = AdafactorSchedule(optimizer)
+    optimizers = (optimizer, lr_scheduler)
 
 if args.save_checkpoint=="True":
     training_args = TrainingArguments(
@@ -180,20 +182,30 @@ def collate_fn(examples):
     return {"pixel_values": pixel_values, "labels": labels}
 
 # Create the Trainer
-trainer = Trainer(
+if args.optimizer == "Adafactor":
+    trainer = Trainer(
     lora_model,
     training_args,
     train_dataset=train_ds,
     eval_dataset=val_ds,
     tokenizer=image_processor,
     compute_metrics=compute_metrics,
-    data_collator=collate_fn
-    # optimizers=optimizers
-)
+    data_collator=collate_fn,
+    optimizers=optimizers)
+else:
+    trainer = Trainer(
+        lora_model,
+        training_args,
+        train_dataset=train_ds,
+        eval_dataset=val_ds,
+        tokenizer=image_processor,
+        compute_metrics=compute_metrics,
+        data_collator=collate_fn
+    )
 
 # Train the model
 mlflow.start_run()
-if args.load_checkpoint and os.path.exists(args.checkpoint_dir):
+if args.load_checkpoint == "True" and os.path.exists(args.checkpoint_dir):
     try:
         train_results = trainer.train(resume_from_checkpoint=args.checkpoint_dir)
     except ValueError as e:

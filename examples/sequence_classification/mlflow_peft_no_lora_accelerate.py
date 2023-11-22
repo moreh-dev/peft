@@ -75,14 +75,15 @@ def parse_args():
     parser.add_argument('--dataset_name', type=str, default='glue', help='The name of the Dataset (from the HuggingFace hub) to train on.')
     parser.add_argument('--cache_dir', type=str, default=None, help='Directory to read/write data.')
     parser.add_argument("--amp", type=str, choices=["bf16", "fp16", "no"], default="fp16", help="Choose AMP mode")
-    parser.add_argument("--optimize", type=str, default="AdamW", help="Choose the optimization computation method")
-
+    parser.add_argument("--optimizer", type=str, default="AdamW", help="Choose the optimization computation method")
+    parser.add_argument('--checkpoint_dir', type=str, default='/nas/test_case_set_{set#}/a100/{benchmark}/{task}/{model_name}/10epoch', help='Directory to save checkpoints.')
+    parser.add_argument('--load_checkpoint', type=str, default="False", help='Load checkpoint or not.')
+    parser.add_argument('--save_checkpoint', type=str, default="False", help='Save checkpoint or not.')
     args = parser.parse_args()
 
     assert args.output_dir is not None, "Need an `output_dir` to store the finetune model and verify."
 
     return args
-
 
 def get_num_parameters(model):
   num_params = 0
@@ -172,13 +173,13 @@ def main():
         model = accelerator.prepare(model)
 
     
-    if args.optimize == "AdamW":
+    if args.optimizer == "AdamW":
         optimizer = torch.optim.AdamW(params=model.parameters(), lr=args.learning_rate)
-    elif args.optimize == "SGD":
+    elif args.optimizer == "SGD":
         optimizer = torch.optim.SGD(params=model.parameters(), lr=args.learning_rate)
-    elif args.optimize == "Adam":
+    elif args.optimizer == "Adam":
         optimizer = torch.optim.Adam(params=model.parameters(), lr=args.learning_rate)
-    elif args.optimize == "RMSprop":
+    elif args.optimizer == "RMSprop":
         optimizer = torch.optim.RMSprop(params=model.parameters(), lr=args.learning_rate)
 
     # Instantiate scheduler
@@ -187,6 +188,16 @@ def main():
         num_warmup_steps=args.num_warmup_steps,
         num_training_steps=(len(train_dataloader) * args.num_train_epochs),
     )
+
+    if args.load_checkpoint == "True":
+        if os.path.exists(args.checkpoint_dir):
+            checkpoint = torch.load(args.checkpoint_dir)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            epoch = checkpoint['epoch']
+            loss = checkpoint['loss']
+        else:
+            pass
 
     if getattr(accelerator.state, "fsdp_plugin", None) is not None:
         train_dataloader, eval_dataloader, optimizer, lr_scheduler = accelerator.prepare(
@@ -233,7 +244,6 @@ def main():
     avg_throughput = len(train_dataloader) * args.per_device_train_batch_size*args.num_train_epochs/ sum(epoch_runtime_list)
     mlflow.log_metric('epoch_time', avg_epoch_runtime)  
     mlflow.log_metric('avg_throughput', avg_throughput)
-    mlflow.end_run()
 
     model.eval()
     samples_seen = 0
@@ -254,13 +264,29 @@ def main():
             references=references,
         )
         eval_metric = metric.compute()
+        
         accelerator.print(f"epoch {epoch}:", eval_metric)
+        accuracy = eval_metric.get('accuracy', None)
 
+        mlflow.log_metric('accuracy', accuracy)
+    mlflow.end_run()
+    
     accelerator.wait_for_everyone()
-    unwrapped_model = accelerator.unwrap_model(model)
-    unwrapped_model.save_pretrained(args.output_dir, state_dict=accelerator.get_state_dict(model))
-    if accelerator.is_main_process:
-        tokenizer.save_pretrained(args.output_dir)
+    if args.save_checkpoint == "True":
+        if epoch == args.num_train_epochs - 1:
+            os.makedirs(os.path.dirname(args.checkpoint_dir), exist_ok=True)
+            torch.save({
+            'epoch': args.num_train_epochs - 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'lr_scheduler_state_dict': lr_scheduler.state_dict(),
+            'loss': loss,
+            }, args.checkpoint_dir)
+
+    # unwrapped_model = accelerator.unwrap_model(model)
+    # unwrapped_model.save_pretrained(args.output_dir, state_dict=accelerator.get_state_dict(model))
+    # if accelerator.is_main_process:
+    #     tokenizer.save_pretrained(args.output_dir)
 
 
 if __name__ == "__main__":

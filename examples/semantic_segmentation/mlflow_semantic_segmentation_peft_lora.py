@@ -23,11 +23,13 @@ parser.add_argument("--learning_rate", type=float, default=5e-4, help="Learning 
 parser.add_argument("--num_train_epochs", type=int, default=2, help="Number of training epochs")
 parser.add_argument("--per_device_train_batch_size", type=int, default=4, help="Batch size for training")
 parser.add_argument("--per_device_eval_batch_size", type=int, default=2, help="Batch size for evaluation")
-parser.add_argument("--output_dir", type=str, default="./outputs", help="Output dir")
 parser.add_argument("--logging_steps", type=int, default=10,
                     help="Log metrics every X steps")
 parser.add_argument("--amp", type=str, choices=["bf16", "fp16", "no"], default="no", help="Choose AMP mode")
-parser.add_argument("--optimize", type=str, default="AdamW", help="Choose the optimization computation method")
+parser.add_argument("--optimizer", type=str, default="AdamW", help="Choose the optimization computation method")
+parser.add_argument('--checkpoint_dir', type=str, default="None", help='Directory to save checkpoints.')
+parser.add_argument('--load_checkpoint', type=str, default=False, help='Load checkpoint or not.')
+parser.add_argument('--save_checkpoint', type=str, default=False, help='Save checkpoint or not.')
 args = parser.parse_args()
 
 # Load dataset
@@ -150,27 +152,45 @@ for name, param in lora_model.named_parameters():
 model_name = args.checkpoint.split("/")[-1]
 
 
-if args.optimize == "Adafactor":
+if args.optimizer == "Adafactor":
     optimizer = Adafactor(model.parameters(), scale_parameter=True, relative_step=True, warmup_init=True, lr=None)
     lr_scheduler = AdafactorSchedule(optimizer)
     optimizers = (optimizer, lr_scheduler)
 
-training_args = TrainingArguments(
-    output_dir=args.output_dir,
-    learning_rate=args.learning_rate,
-    num_train_epochs=args.num_train_epochs,
-    per_device_train_batch_size=args.per_device_train_batch_size,
-    per_device_eval_batch_size=args.per_device_eval_batch_size,
-    fp16=args.amp,
-    save_total_limit=3,
-    evaluation_strategy="epoch",
-    save_strategy="epoch",
-    logging_steps=args.logging_steps,
-    remove_unused_columns=False,
-    push_to_hub=False,
-    label_names=["labels"]
-)
-if args.optimize == "AdamW":
+if args.save_checkpoint=="True":
+    training_args = TrainingArguments(
+        output_dir=args.checkpoint_dir,
+        overwrite_output_dir=True,
+        learning_rate=args.learning_rate,
+        num_train_epochs=args.num_train_epochs,
+        per_device_train_batch_size=args.per_device_train_batch_size,
+        per_device_eval_batch_size=args.per_device_eval_batch_size,
+        fp16=args.amp,
+        save_total_limit=1,
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
+        logging_steps=args.logging_steps,
+        remove_unused_columns=False,
+        push_to_hub=False,
+        label_names=["labels"]
+    )
+else:
+    training_args = TrainingArguments(
+        output_dir=args.checkpoint_dir,
+        learning_rate=args.learning_rate,
+        num_train_epochs=args.num_train_epochs,
+        per_device_train_batch_size=args.per_device_train_batch_size,
+        per_device_eval_batch_size=args.per_device_eval_batch_size,
+        fp16=args.amp,
+        save_total_limit=0,
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
+        logging_steps=args.logging_steps,
+        remove_unused_columns=False,
+        push_to_hub=False,
+        label_names=["labels"]
+    )
+if args.optimizer == "AdamW":
     trainer = Trainer(
     model=lora_model,
     args=training_args,
@@ -178,7 +198,7 @@ if args.optimize == "AdamW":
     eval_dataset=test_ds,
     compute_metrics=compute_metrics,
 )
-elif args.optimize == "Adafactor":
+elif args.optimizer == "Adafactor":
     trainer = Trainer(
         model=lora_model,
         args=training_args,
@@ -189,7 +209,15 @@ elif args.optimize == "Adafactor":
     )
 
 mlflow.start_run()
-train_results =  trainer.train()
+if args.load_checkpoint == "True" and os.path.exists(args.checkpoint_dir):
+    try:
+        train_results = trainer.train(resume_from_checkpoint=args.checkpoint_dir)
+    except ValueError as e:
+        print(f"Error: {e}")
+        print("No valid checkpoint found, training from scratch.")
+        train_results = trainer.train()
+else:
+    train_results = trainer.train()
 trainer.log_metrics("train", train_results.metrics)
 trainer.save_metrics("train", train_results.metrics)
 trainer.save_model()
