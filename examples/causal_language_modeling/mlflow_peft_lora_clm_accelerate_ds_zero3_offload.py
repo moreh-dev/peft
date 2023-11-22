@@ -455,7 +455,7 @@ if __name__ == "__main__":
     parser.add_argument('--cache_dir', type=str, default=None, help='Directory to read/write data.')
     parser.add_argument("--amp", type=str, choices=["bf16", "fp16", "no"], default="fp16", help="Choose AMP mode")
     parser.add_argument("--optimizer", type=str, default="AdamW", help="Choose the optimization computation method")
-    parser.add_argument('--checkpoint_dir', type=str, default="None", help='Directory to save checkpoints.')
+    parser.add_argument('--checkpoint_dir', type=str, default= './save_checkpoint', help='Directory to save checkpoints.')
     parser.add_argument('--load_checkpoint', type=str, default="False", help='Load checkpoint or not.')
     parser.add_argument('--save_checkpoint', type=str, default="False", help='Save checkpoint or not.')
     args = parser.parse_args()

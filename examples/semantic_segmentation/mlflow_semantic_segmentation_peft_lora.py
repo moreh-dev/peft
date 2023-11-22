@@ -27,7 +27,7 @@ parser.add_argument("--logging_steps", type=int, default=10,
                     help="Log metrics every X steps")
 parser.add_argument("--amp", type=str, choices=["bf16", "fp16", "no"], default="no", help="Choose AMP mode")
 parser.add_argument("--optimizer", type=str, default="AdamW", help="Choose the optimization computation method")
-parser.add_argument('--checkpoint_dir', type=str, default="None", help='Directory to save checkpoints.')
+parser.add_argument('--checkpoint_dir', type=str, default= './save_checkpoint', help='Directory to save checkpoints.')
 parser.add_argument('--load_checkpoint', type=str, default=False, help='Load checkpoint or not.')
 parser.add_argument('--save_checkpoint', type=str, default=False, help='Save checkpoint or not.')
 args = parser.parse_args()
