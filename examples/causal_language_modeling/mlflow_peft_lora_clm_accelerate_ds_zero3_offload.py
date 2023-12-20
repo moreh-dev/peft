@@ -393,6 +393,7 @@ def main(args):
     
     avg_throughput = len(train_dataloader) * args.batch_size*num_epochs / sum(epoch_runtime_list)
     mlflow.log_metric('avg_throughput', avg_throughput)
+    mlflow.log_metric('accuracy', accuracy)
     mlflow.end_run()
     if do_test:
         model.eval()
@@ -454,7 +455,7 @@ if __name__ == "__main__":
     parser.add_argument('--cache_dir', type=str, default=None, help='Directory to read/write data.')
     parser.add_argument("--amp", type=str, choices=["bf16", "fp16", "no"], default="fp16", help="Choose AMP mode")
     parser.add_argument("--optimizer", type=str, default="AdamW", help="Choose the optimization computation method")
-    parser.add_argument('--checkpoint_dir', type=str, default='/nas/test_case_set_{set#}/a100/{benchmark}/{task}/{model_name}/10epoch', help='Directory to save checkpoints.')
+    parser.add_argument('--checkpoint_dir', type=str, default= './save_checkpoint', help='Directory to save checkpoints.')
     parser.add_argument('--load_checkpoint', type=str, default="False", help='Load checkpoint or not.')
     parser.add_argument('--save_checkpoint', type=str, default="False", help='Save checkpoint or not.')
     args = parser.parse_args()
