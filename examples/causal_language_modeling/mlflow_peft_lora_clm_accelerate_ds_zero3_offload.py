@@ -146,7 +146,7 @@ def main(args):
         batched=True,
         num_proc=1,
     )
-
+    tmp_dataset = dataset["train"].train_test_split(test_size=0.2, seed=42)
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
@@ -194,9 +194,8 @@ def main(args):
             model_inputs["input_ids"][i] = torch.tensor(model_inputs["input_ids"][i][:max_length])
             model_inputs["attention_mask"][i] = torch.tensor(model_inputs["attention_mask"][i][:max_length])
         return model_inputs
-
     with accelerator.main_process_first():
-        processed_datasets = dataset.map(
+        processed_datasets = tmp_dataset.map(
             preprocess_function,
             batched=True,
             num_proc=1,
@@ -214,6 +213,17 @@ def main(args):
     # mlflow_runner = mlflow.start_run(run_name=model_name_or_path, experiment_id=experiment.experiment_id)
 
     with accelerator.main_process_first():
+        processed_datasets = tmp_dataset.map(
+            test_preprocess_function,
+            batched=True,
+            num_proc=1,
+            remove_columns=dataset["train"].column_names,
+            load_from_cache_file=False,
+            desc="Running tokenizer on dataset",
+        )
+    eval_dataset = processed_datasets["test"]
+
+    with accelerator.main_process_first():
         processed_datasets = dataset.map(
             test_preprocess_function,
             batched=True,
@@ -222,7 +232,6 @@ def main(args):
             load_from_cache_file=False,
             desc="Running tokenizer on dataset",
         )
-    eval_dataset = processed_datasets["train"]
     test_dataset = processed_datasets["test"]
 
     train_dataloader = DataLoader(
@@ -380,16 +389,16 @@ def main(args):
         correct = 0
         total = 0
         assert len(eval_preds) == len(
-            dataset["train"][label_column]
-        ), f"{len(eval_preds)} != {len(dataset['train'][label_column])}"
-        for pred, true in zip(eval_preds, dataset["train"][label_column]):
+            tmp_dataset["test"][label_column]
+        ), f"{len(eval_preds)} != {len(tmp_dataset['test'][label_column])}"
+        for pred, true in zip(eval_preds, tmp_dataset["test"][label_column]):
             if pred.strip() == true.strip():
                 correct += 1
             total += 1
-        accuracy = correct / total * 100
+        accuracy = correct / total
         accelerator.print(f"{accuracy=}")
         accelerator.print(f"{eval_preds[:10]=}")
-        accelerator.print(f"{dataset['train'][label_column][:10]=}")
+        accelerator.print(f"{tmp_dataset['test'][label_column][:10]=}")
     
     avg_throughput = len(train_dataloader) * args.batch_size*num_epochs / sum(epoch_runtime_list)
     mlflow.log_metric('avg_throughput', avg_throughput)

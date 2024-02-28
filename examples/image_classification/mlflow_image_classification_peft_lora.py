@@ -41,8 +41,8 @@ args = parser.parse_args()
 
 
 # Load dataset
-dataset = load_dataset(args.dataset_name, split="train[:5000]", cache_dir=args.cache_dir)
-labels = dataset.features["label"].names
+dataset = load_dataset(args.dataset_name, split="train[:500]", cache_dir=args.cache_dir)
+labels = dataset.features["labels"].names
 label2id, id2label = dict(), dict()
 for i, label in enumerate(labels):
     label2id[label] = i
@@ -237,5 +237,8 @@ mlflow.log_metric('epoch_time', epoch_time)
 mlflow.end_run()
 
 # Evaluate the model on the validation set
-trainer.evaluate(val_ds)
+metrics = trainer.evaluate(val_ds)
+metrics['throughput'] = metrics['eval_samples_per_second']
+trainer.log_metrics("eval", metrics)
+trainer.save_metrics("eval", metrics)
 
