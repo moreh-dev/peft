@@ -3,8 +3,8 @@ dependencies:
   - python=3.8
   - pip
   - pip:
-    - torch>=1.13.1
-    - torchvision>=0.14.1
+    - torch==1.13.1
+    - torchvisio==0.14.1
     - transformers==4.29.2
     - datasets==2.14.6
     - evaluate==0.4.1
