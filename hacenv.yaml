@@ -1,0 +1,27 @@
+name: testbench-peft
+dependencies:
+  - python=3.8
+  - pip
+  - pip:
+    - moreh-driver==24.3.0
+    - torch==1.13.1+cu116.moreh24.3.0
+    - torchvision==0.14.1
+    - transformers==4.29.2
+    - datasets==2.14.6
+    - evaluate==0.4.1
+    - peft==0.5.0 
+    - scikit-learn>=1.3.2
+    - loralib==0.1.2
+    - tqdm>=4.66.1
+    - diffusers==0.21.4
+    - Pillow>=10.1.0
+    - huggingface_hub==0.18.0
+    - accelerate==0.24.0
+    - mlflow
+    - psutil
+    - black
+    - pre-commit
+    - expecttest
+    - optuna
+    - pytest
+    - sentencepiece>=0.1.99
